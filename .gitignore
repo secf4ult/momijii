@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+.DS_Store
+*.tsbuildinfo
+.env*
+playwright-report/
+test-results/
+data/.cache/
+data/.sync.lock
+data/*.tmp

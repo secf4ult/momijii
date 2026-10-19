@@ -1,0 +1,67 @@
+import { test, expect } from '@playwright/test';
+import { visit } from './helpers';
+test('catalog, prefecture/city filters, seasonal colors, notes and persistence', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await visit(page);
+  await expect(page.locator('.spot-card')).toHaveCount(24);
+  await expect(page.locator('.coverage-note')).toContainText('已收录 1198');
+  await page.getByRole('button', { name: '下一页 →' }).click();
+  await expect(page.locator('.pagination')).toContainText('2 /');
+  await page.getByLabel('筛选地区').selectOption('群馬県');
+  await expect(page.getByLabel('筛选市区町村')).toBeEnabled();
+  await page.getByLabel('筛选市区町村').selectOption('みなかみ町');
+  await page.getByLabel('搜索景点').fill('谷川岳');
+  await expect(page.locator('.spot-card')).toHaveCount(2);
+  await expect(page.locator('.map-heading')).toContainText('2 处名所');
+  for (const [date, label] of [['2026-09-06', '未到观赏季'], ['2026-09-07', '即将到来'], ['2026-09-21', '盛开季节'], ['2026-11-01', '已过盛开季节']]) {
+    await page.getByLabel('季节判断日期').fill(date);
+    await expect(page.locator('.spot-card').filter({ has: page.getByRole('button', { name: '谷川岳', exact: true }) }).locator('.season-badge')).toHaveText(label);
+  }
+  await page.getByLabel('筛选观赏季节').selectOption('peak');
+  await expect(page.getByText('这里还没有风景')).toBeVisible();
+  await page.getByLabel('筛选观赏季节').selectOption('past');
+  const status = page.getByLabel('谷川岳旅行状态');
+  await expect(status).toBeEnabled();
+  await status.selectOption('visited');
+  await page.getByRole('button', { name: '谷川岳', exact: true }).click();
+  await page.getByLabel('旅行笔记').fill('期待下一次秋天');
+  await page.getByLabel('到访日期').fill('2026-10-20');
+  await page.reload();
+  await page.getByLabel('搜索景点').fill('谷川岳');
+  await expect(status).toHaveValue('visited');
+  await page.getByRole('button', { name: '谷川岳', exact: true }).click();
+  await expect(page.getByLabel('旅行笔记')).toHaveValue('期待下一次秋天');
+  await expect(page.getByLabel('到访日期')).toHaveValue('2026-10-20');
+  await page.getByLabel('搜索景点').fill('nothing matches');
+  await expect(page.getByText('这里还没有风景')).toBeVisible();
+  await page.getByRole('button', { name: '清除全部筛选' }).click();
+  await expect(page.locator('.spot-card')).toHaveCount(24);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: '/tmp/momiji-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '/tmp/momiji-mobile.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
+test('region overview drills down to municipalities and keeps dates visible', async ({ page }) => {
+  await visit(page);
+  await page.getByRole('button', { name: /全国 · 都道府县数据/ }).click();
+  await expect(page.locator('.region-table tbody tr')).toHaveCount(46);
+  await page.locator('.region-table').getByRole('button', { name: '群馬県 ↗', exact: true }).click();
+  await expect(page.getByLabel('筛选地区')).toHaveValue('群馬県');
+  await expect(page.locator('.region-table')).toContainText('みなかみ町');
+  await page.locator('.region-table').getByRole('button', { name: 'みなかみ町 ↗', exact: true }).click();
+  await expect(page.getByLabel('筛选市区町村')).toHaveValue('みなかみ町');
+});
+test('location tracking is opt-in and can be stopped', async ({ page, context }) => {
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 35.68, longitude: 139.76 });
+  await visit(page);
+  await page.getByRole('button', { name: '◎ 我的位置' }).click();
+  await expect(page.getByRole('button', { name: '◎ 停止跟踪' })).toBeVisible();
+  await context.setGeolocation({ latitude: 35.69, longitude: 139.77 });
+  await page.getByRole('button', { name: '◎ 停止跟踪' }).click();
+  await expect(page.getByText('已停止位置跟踪')).toBeVisible();
+});
